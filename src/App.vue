@@ -53,7 +53,7 @@ button {
 
 .main{
   background-color: rgba(240, 248, 255, 0.513);
-  margin: 0px 80px;
+  margin: 0px 80px 50px 80px;
   height: 2000px;
   width: auto;
 }
