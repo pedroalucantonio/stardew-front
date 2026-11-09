@@ -1,11 +1,7 @@
 @import './base.css';
 
 body {
-  background-image: url(../components/Stardewbackground.png);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-attachment: fixed;
+  background-image: none;
 }
 
 #app {

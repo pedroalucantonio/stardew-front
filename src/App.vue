@@ -1,68 +1,101 @@
 <template>
-  <header>
-    <div>
-      <a class="logo" href="/">
-        <img src="/logo.ico" class="Galinha" alt="Logo Stardew Valley">
-        <img src="/armazem-do-pierre.ico" class="Placa" alt="Armazém do Pierre">
-      </a>
-    </div>
-    <div class="searchbar">
-      <input
-        v-model="search"
-        class="typebar"
-        type="search"
-        placeholder="Buscar sementes..."
-        aria-label="Buscar sementes"
-      >
-    </div>
+  <div class="page" :style="wallpaperStyle">
+    <header>
+      <div>
+        <a class="logo" href="/">
+          <img src="/logo.ico" class="Galinha" alt="Logo Stardew Valley">
+          <img src="/armazem-do-pierre.ico" class="Placa" alt="Armazém do Pierre">
+        </a>
+      </div>
+      <div class="searchbar">
+        <input
+          v-model="search"
+          class="typebar"
+          type="search"
+          placeholder="Buscar sementes..."
+          aria-label="Buscar sementes"
+        >
+      </div>
 
-    <div class="login">
-      <a href="#">Login</a>
-      <a href="#">Register</a>
-    </div>
-  </header>
+      <div class="login">
+        <a href="#">Login</a>
+        <a href="#">Register</a>
+      </div>
+    </header>
 
-  <main class="main">
-    <h1>Sementes de Stardew Valley</h1>
-    <p v-if="loading" class="message">Carregando sementes...</p>
-    <p v-else-if="apiError" class="message error">{{ apiError }}</p>
-    <p v-else-if="filteredSeeds.length === 0" class="message">
-      Nenhuma semente encontrada.
-    </p>
+    <main class="main">
+      <h1>Produtos Disponíveis</h1>
+      <label class="season-switch">
+        <input
+          v-model="showAllSeasons"
+          type="checkbox"
+          role="switch"
+          aria-label="Mostrar sementes de todas as estações"
+        >
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>Lista de Estoque</span>
+      </label>
+      <h2>Sementes</h2>
 
-    <section v-else class="seed-grid" aria-label="Lista de sementes">
-      <article v-for="seed in filteredSeeds" :key="seed.id" class="seed-card">
-        <h2>{{ translateSeed(seed.name) }}</h2>
-        <dl>
-          <div>
-            <dt>Preço</dt>
-            <dd>{{ seed.price }} ouros</dd>
-          </div>
-          <div>
-            <dt>Tempo de crescimento</dt>
-            <dd>{{ seed['days-to-grow'] }} dias</dd>
-          </div>
-          <div>
-            <dt>Rebrota</dt>
-            <dd>
-              <template v-if="seed.regrowable">
-                Sim<span v-if="seed['regrow-days']">
-                  (a cada {{ seed['regrow-days'] }} dias)</span>
-              </template>
-              <template v-else>Não</template>
-            </dd>
-          </div>
-          <div>
-            <dt>Estação</dt>
-            <dd>{{ seed.seasons.map((season) => translateSeason(season.name)).join(', ') || '—' }}</dd>
-          </div>
-        </dl>
-      </article>
-    </section>
-  </main>
+      <p v-if="loading || (!showAllSeasons && currentSeasonLoading)" class="message">
+        Carregando sementes...
+      </p>
+      <p v-else-if="apiError" class="message error">{{ apiError }}</p>
+      <p v-else-if="currentSeasonError && !showAllSeasons" class="message error">
+        {{ currentSeasonError }}
+      </p>
+      <p v-else-if="filteredSeeds.length === 0" class="message">
+        Nenhuma semente encontrada.
+      </p>
+
+      <section v-else class="seed-grid" aria-label="Lista de sementes">
+        <article v-for="seed in filteredSeeds" :key="seed.id" class="seed-card">
+          <h2>{{ translateSeed(seed.name) }}</h2>
+          <dl>
+            <div>
+              <dt>Tipo</dt>
+              <dd>{{ seed.type }}</dd>
+            </div>
+            <div>
+              <dt>Preço</dt>
+              <dd>{{ seed.price }} ouros</dd>
+            </div>
+            <div>
+              <dt>Tempo de crescimento</dt>
+              <dd>{{ seed['days-to-grow'] }} dias</dd>
+            </div>
+            <div>
+              <dt>Rebrota</dt>
+              <dd>
+                <template v-if="seed.regrowable">
+                  Sim<span v-if="seed['regrow-days']">
+                    (a cada {{ seed['regrow-days'] }} dias)</span>
+                </template>
+                <template v-else>Não</template>
+              </dd>
+            </div>
+            <div>
+              <dt>Estação</dt>
+              <dd>{{ seed.seasons.map((season) => translateSeason(season.name)).join(', ') || '—' }}</dd>
+            </div>
+          </dl>
+        </article>
+      </section>
+
+      
+    </main>
+  </div>
 </template>
 
 <style scoped>
+.page {
+  min-height: 100vh;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
 header {
   display: flex;
   align-items: center;
@@ -119,7 +152,7 @@ input::placeholder {
 }
 
 .login a {
-  color: #26351f;
+  color: #ffffff;
 }
 
 .main {
@@ -132,9 +165,65 @@ input::placeholder {
   color: #26351f;
 }
 
-h1 {
+.season-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  cursor: pointer;
+}
+
+.season-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.switch-track {
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #75806e;
+  transition: background-color 0.2s ease;
+}
+
+.switch-track::before {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  content: '';
+  transition: transform 0.2s ease;
+}
+
+.season-switch input:checked + .switch-track {
+  background: #527a35;
+}
+
+.season-switch input:checked + .switch-track::before {
+  transform: translateX(20px);
+}
+
+.season-switch input:focus-visible + .switch-track {
+  outline: 3px solid #26351f;
+  outline-offset: 3px;
+}
+
+h1,h2 {
   margin-bottom: 1.5rem;
   text-align: center;
+}
+h2{
+  border-bottom: 1px solid #525252;
+  border-top: 1px solid #525252;
 }
 
 .seed-grid {
@@ -212,16 +301,44 @@ h1 {
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import api from './services/api'
+import fallWallpaper from './components/fall.png'
+import winterWallpaper from './components/winter.png'
+import springWallpaper from './components/spring.png'
+import summerWallpaper from './components/summer.png'
 
 const seeds = ref([])
 const search = ref('')
+const showAllSeasons = ref(false)
 const loading = ref(true)
 const apiError = ref('')
+const currentSeason = ref('')
+const currentSeasonLoading = ref(true)
+const currentSeasonError = ref('')
+const wallpaper = ref('')
+const wallpaperBySeason = {
+  fall: fallWallpaper,
+  winter: winterWallpaper,
+  spring: springWallpaper,
+  summer: summerWallpaper,
+}
+const wallpaperStyle = computed(() => ({
+  backgroundImage: wallpaper.value ? `url("${wallpaper.value}")` : 'none',
+}))
 const seasonTranslations = {
   fall: 'Outono',
   winter: 'Inverno',
   spring: 'Primavera',
   summer: 'Verão',
+}
+const seasonKeysByName = {
+  fall: 'fall',
+  outono: 'fall',
+  winter: 'winter',
+  inverno: 'winter',
+  spring: 'spring',
+  primavera: 'spring',
+  summer: 'summer',
+  verao: 'summer',
 }
 const seedTranslations = {
   'Parsnip Seeds': 'Sementes de Chirívia',
@@ -241,7 +358,18 @@ const seedTranslations = {
 }
 
 function translateSeason(name) {
-  return seasonTranslations[name.toLowerCase()] ?? name
+  const key = getSeasonKey(name)
+  return seasonTranslations[key] ?? name
+}
+
+function getSeasonKey(name) {
+  const normalizedName = name
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+
+  return seasonKeysByName[normalizedName] ?? ''
 }
 
 function translateSeed(name) {
@@ -250,10 +378,15 @@ function translateSeed(name) {
 
 const filteredSeeds = computed(() => {
   const query = search.value.trim().toLocaleLowerCase()
+  const availableSeeds = showAllSeasons.value
+    ? seeds.value
+    : seeds.value.filter((seed) =>
+        seed.seasons.some((season) => getSeasonKey(season.name) === currentSeason.value),
+      )
 
-  if (!query) return seeds.value
+  if (!query) return availableSeeds
 
-  return seeds.value.filter((seed) => {
+  return availableSeeds.filter((seed) => {
     const seasonNames = seed.seasons
       .flatMap((season) => [season.name, translateSeason(season.name)])
       .join(' ')
@@ -262,7 +395,7 @@ const filteredSeeds = computed(() => {
   })
 })
 
-onMounted(async () => {
+async function loadSeeds() {
   try {
     const { data } = await api.get('/seeds')
     seeds.value = Array.isArray(data) ? data : data.data
@@ -272,5 +405,30 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+async function loadCurrentSeasonWallpaper() {
+  try {
+    const { data } = await api.get('/estacao-atual')
+    const seasonKey = getSeasonKey(data.estacao ?? '')
+    const selectedWallpaper = wallpaperBySeason[seasonKey]
+
+    if (!selectedWallpaper) {
+      throw new Error(`Estação atual desconhecida: ${data.estacao}`)
+    }
+
+    currentSeason.value = seasonKey
+    wallpaper.value = selectedWallpaper
+  } catch (cause) {
+    console.error('Erro ao carregar a estação atual e seu wallpaper:', cause)
+    currentSeasonError.value = 'Não foi possível carregar a estação atual.'
+  } finally {
+    currentSeasonLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadSeeds()
+  loadCurrentSeasonWallpaper()
 })
 </script>
