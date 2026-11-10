@@ -7,7 +7,7 @@
           <img src="/armazem-do-pierre.ico" class="Placa" alt="Armazém do Pierre">
         </a>
       </div>
-      <div class="searchbar">
+      <div v-if="!authMode && authUser" class="searchbar">
         <input
           v-model="search"
           class="typebar"
@@ -17,13 +17,99 @@
         >
       </div>
 
-      <div class="login">
-        <a href="#">Login</a>
-        <a href="#">Register</a>
-      </div>
+      <nav class="login" aria-label="Autenticação">
+        <template v-if="authUser">
+          <span class="welcome">Olá, {{ authUser.name }}</span>
+          <button class="nav-button" type="button" @click="logout">Sair</button>
+        </template>
+        <template v-else-if="authMode !== 'checking'">
+          <a href="#login" @click.prevent="setAuthMode('login')">Entrar</a>
+          <a href="#register" @click.prevent="setAuthMode('register')">Cadastrar</a>
+        </template>
+      </nav>
     </header>
 
-    <main class="main">
+    <main v-if="authMode === 'checking'" class="main auth-main" aria-live="polite">
+      <p class="message">Verificando sessão...</p>
+    </main>
+
+    <main v-else-if="authMode" class="main auth-main">
+      <section class="auth-card" aria-labelledby="auth-title">
+        <h1 id="auth-title">{{ authMode === 'login' ? 'Bem-vindo de volta' : 'Criar conta' }}</h1>
+        <p class="auth-intro">
+          {{ authMode === 'login'
+            ? 'Entre para conferir as sementes do Armazém do Pierre.'
+            : 'Cadastre-se para acessar o estoque do Armazém do Pierre.' }}
+        </p>
+
+        <form class="auth-form" @submit.prevent="submitAuth">
+          <label v-if="authMode === 'register'" for="name">Nome</label>
+          <input
+            v-if="authMode === 'register'"
+            id="name"
+            v-model.trim="credentials.name"
+            name="name"
+            type="text"
+            autocomplete="name"
+            required
+            maxlength="255"
+          >
+
+          <label for="email">E-mail</label>
+          <input
+            id="email"
+            v-model.trim="credentials.email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+          >
+
+          <label for="password">Senha</label>
+          <input
+            id="password"
+            v-model="credentials.password"
+            name="password"
+            type="password"
+            :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'"
+            required
+            :minlength="authMode === 'register' ? 8 : undefined"
+          >
+
+          <template v-if="authMode === 'register'">
+            <label for="password-confirmation">Confirme a senha</label>
+            <input
+              id="password-confirmation"
+              v-model="credentials.password_confirmation"
+              name="password_confirmation"
+              type="password"
+              autocomplete="new-password"
+              required
+              minlength="8"
+            >
+          </template>
+
+          <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
+          <button class="submit-button" type="submit" :disabled="authSubmitting">
+            {{ authSubmitting
+              ? 'Aguarde...'
+              : authMode === 'login' ? 'Entrar' : 'Criar conta' }}
+          </button>
+        </form>
+
+        <p class="auth-switch">
+          {{ authMode === 'login' ? 'Ainda não tem conta?' : 'Já tem uma conta?' }}
+          <a
+            :href="authMode === 'login' ? '#register' : '#login'"
+            @click.prevent="setAuthMode(authMode === 'login' ? 'register' : 'login')"
+          >
+            {{ authMode === 'login' ? 'Cadastre-se' : 'Entrar' }}
+          </a>
+        </p>
+      </section>
+    </main>
+
+    <main v-else class="main">
       <h1>Produtos Disponíveis</h1>
       <label class="season-switch">
         <input
@@ -81,14 +167,13 @@
           </dl>
         </article>
       </section>
-
-      
     </main>
   </div>
 </template>
 
 <style scoped>
 .page {
+  display: flow-root;
   min-height: 100vh;
   background-position: center;
   background-repeat: no-repeat;
@@ -155,6 +240,20 @@ input::placeholder {
   color: #ffffff;
 }
 
+.welcome {
+  color: #fff;
+}
+
+.nav-button {
+  border: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  background: #527a35;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
 .main {
   width: min(1200px, calc(100% - 3rem));
   min-height: 60vh;
@@ -163,6 +262,82 @@ input::placeholder {
   border-radius: 12px;
   background-color: rgba(240, 248, 255, 0.82);
   color: #26351f;
+}
+
+.auth-main {
+  display: grid;
+  min-height: 65vh;
+  place-items: center;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 2rem;
+  border: 2px solid #75934a;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 3px 8px rgba(40, 55, 25, 0.15);
+}
+
+.auth-card h1 {
+  margin-bottom: 0.5rem;
+}
+
+.auth-intro,
+.auth-switch {
+  text-align: center;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1.5rem;
+}
+
+.auth-form label {
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #75806e;
+  border-radius: 6px;
+  background: #fff;
+  color: #26351f;
+  font: inherit;
+}
+
+.submit-button {
+  min-height: 44px;
+  margin-top: 0.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: #527a35;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.submit-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.auth-error {
+  color: #7f1d1d;
+}
+
+.auth-switch {
+  margin-top: 1.25rem;
+}
+
+.auth-switch a {
+  color: #365923;
+  font-weight: 600;
 }
 
 .season-switch {
@@ -300,13 +475,25 @@ h2{
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import api from './services/api'
+import { api } from './api/http.js'
+import { login } from './api/auth/login.js'
+import { register } from './api/auth/register.js'
 import fallWallpaper from './components/fall.png'
 import winterWallpaper from './components/winter.png'
 import springWallpaper from './components/spring.png'
 import summerWallpaper from './components/summer.png'
 
 const seeds = ref([])
+const authMode = ref('checking')
+const authUser = ref(null)
+const authSubmitting = ref(false)
+const authError = ref('')
+const credentials = ref({
+  name: '',
+  email: '',
+  password: '',
+  password_confirmation: '',
+})
 const search = ref('')
 const showAllSeasons = ref(false)
 const loading = ref(true)
@@ -348,13 +535,13 @@ const seedTranslations = {
   'Kale Seeds': 'Sementes de Couve',
   'Strawberry Seeds': 'Sementes de Morango',
   'Blueberry Seeds': 'Sementes de Mirtilo',
-  'Melon Seeds': 'Sementes de Melão',
   'Tomato Seeds': 'Sementes de Tomate',
   'Hot Pepper Seeds': 'Sementes de Pimenta',
   'Corn Seeds': 'Sementes de Milho',
   'Pumpkin Seeds': 'Sementes de Abóbora',
   'Cranberry Seeds': 'Sementes de Oxicoco',
   'Yam Seeds': 'Sementes de Inhame',
+  'Sunflower Seeds': 'Sementes de Girassol',
 }
 
 function translateSeason(name) {
@@ -397,7 +584,7 @@ const filteredSeeds = computed(() => {
 
 async function loadSeeds() {
   try {
-    const { data } = await api.get('/seeds')
+    const data = await api('/api/seeds')
     seeds.value = Array.isArray(data) ? data : data.data
   } catch (cause) {
     console.error('Erro ao carregar sementes da API:', cause)
@@ -407,9 +594,62 @@ async function loadSeeds() {
   }
 }
 
+function setAuthMode(mode) {
+  authMode.value = mode
+  authError.value = ''
+  credentials.value = {
+    name: '',
+    email: '',
+    password: '',
+    password_confirmation: '',
+  }
+}
+
+function getAuthError(cause) {
+  const errors = cause.data?.errors
+  if (errors) return Object.values(errors).flat().join(' ')
+  if (cause.status === 401) return 'E-mail ou senha inválidos.'
+  return cause.data?.message ?? 'Não foi possível concluir a autenticação. Tente novamente.'
+}
+
+async function submitAuth() {
+  authSubmitting.value = true
+  authError.value = ''
+
+  try {
+    const user = authMode.value === 'login'
+      ? await login({
+          email: credentials.value.email,
+          password: credentials.value.password,
+        })
+      : await register(credentials.value)
+
+    authUser.value = user.data ?? user
+    authMode.value = ''
+    await loadSeeds()
+  } catch (cause) {
+    authError.value = getAuthError(cause)
+  } finally {
+    authSubmitting.value = false
+  }
+}
+
+async function logout() {
+  try {
+    await api('/api/logout', { method: 'POST' })
+    authUser.value = null
+    seeds.value = []
+    apiError.value = ''
+    setAuthMode('login')
+  } catch (cause) {
+    console.error('Erro ao encerrar sessão:', cause)
+    apiError.value = 'Não foi possível encerrar a sessão. Tente novamente.'
+  }
+}
+
 async function loadCurrentSeasonWallpaper() {
   try {
-    const { data } = await api.get('/estacao-atual')
+    const data = await api('/api/estacao-atual')
     const seasonKey = getSeasonKey(data.estacao ?? '')
     const selectedWallpaper = wallpaperBySeason[seasonKey]
 
@@ -428,7 +668,23 @@ async function loadCurrentSeasonWallpaper() {
 }
 
 onMounted(() => {
-  loadSeeds()
   loadCurrentSeasonWallpaper()
+  api('/api/me')
+    .then((user) => {
+      authUser.value = user.data ?? user
+      authMode.value = ''
+      return loadSeeds()
+    })
+    .catch((cause) => {
+      authMode.value = 'login'
+
+      if (cause.status === 401) return
+
+      console.error('Erro ao verificar a sessão:', cause)
+      authError.value = 'Não foi possível conectar à API. Verifique se ela está disponível.'
+    })
+    .finally(() => {
+      loading.value = false
+    })
 })
 </script>
