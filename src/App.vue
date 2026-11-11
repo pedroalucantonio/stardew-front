@@ -135,9 +135,19 @@
           <article v-for="item in cart.items" :key="item.seed_id" class="shopping-row">
             <div><strong>{{ translateSeed(item.name) }}</strong><p>{{ item.price }} ouros por unidade</p></div>
             <div class="quantity-controls">
-              <button class="nav-button" :disabled="shoppingBusy" :aria-label="'Diminuir quantidade de ' + translateSeed(item.name)" @click="updateCart(item.seed_id, item.quantity - 1)">−</button>
-              <span>{{ item.quantity }}</span>
-              <button class="nav-button" :disabled="shoppingBusy || item.quantity >= 999" :aria-label="'Aumentar quantidade de ' + translateSeed(item.name)" @click="updateCart(item.seed_id, item.quantity + 1)">+</button>
+              <label class="cart-quantity">
+                Quantidade
+                <input
+                  type="number"
+                  min="1"
+                  max="999"
+                  step="1"
+                  :value="item.quantity"
+                  :disabled="shoppingBusy"
+                  :aria-label="'Quantidade de ' + translateSeed(item.name)"
+                  @change="setCartQuantity(item.seed_id, $event)"
+                >
+              </label>
               <button class="nav-button" :disabled="shoppingBusy" :aria-label="'Remover ' + translateSeed(item.name)" @click="updateCart(item.seed_id, 0)">Remover</button>
             </div>
             <strong>{{ item.subtotal }} ouros</strong>
@@ -188,16 +198,16 @@
           <label for="catalog-regrowable">Rebrota?</label>
           <input id="catalog-regrowable" v-model="catalogForm.regrowable" type="checkbox">
 
-          <label v-if="catalogForm.regrowable" for="catalog-regrow-days">Dias entre rebrotas</label>
+          <label v-if="catalogForm.regrowable" for="catalog-regrow-days">Dias para rebrotar</label>
           <input v-if="catalogForm.regrowable" id="catalog-regrow-days" v-model.number="catalogForm['regrow-days']" type="number" min="1" max="30" required>
 
-          <label for="catalog-seasons">Estações</label>
-          <select id="catalog-seasons" v-model="catalogForm.seasons" multiple size="4" required>
-            <option value="1">Primavera</option>
-            <option value="2">Verão</option>
-            <option value="3">Outono</option>
-            <option value="4">Inverno</option>
-          </select>
+          <fieldset class="season-options">
+            <legend>Estações</legend>
+            <label><input v-model="catalogForm.seasons" type="checkbox" value="1"> Primavera</label>
+            <label><input v-model="catalogForm.seasons" type="checkbox" value="2"> Verão</label>
+            <label><input v-model="catalogForm.seasons" type="checkbox" value="3"> Outono</label>
+            <label><input v-model="catalogForm.seasons" type="checkbox" value="4"> Inverno</label>
+          </fieldset>
 
           <p v-if="catalogError" class="auth-error" role="alert">{{ catalogError }}</p>
           <button class="submit-button" type="submit" :disabled="catalogSaving">
@@ -259,7 +269,7 @@
             </div>
             <div>
               <dt>Estação</dt>
-              <dd>{{ seed.seasons.map((season) => translateSeason(season.name)).join(', ') || '—' }}</dd>
+              <dd>{{ formatSeedSeasons(seed.seasons) }}</dd>
             </div>
           </dl>
           <button class="submit-button" :disabled="shoppingBusy || shoppingLoading || !cartLoaded || cartQuantity(seed.id) >= 999" @click="updateCart(seed.id, cartQuantity(seed.id) + 1)">Adicionar ao carrinho</button>
@@ -281,6 +291,8 @@
   border-bottom: 1px solid #75934a;
 }
 .quantity-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+.cart-quantity { display: flex; align-items: center; gap: 0.5rem; }
+.cart-quantity input { width: 5.5rem; min-height: 38px; padding: 0.4rem; border: 1px solid #75806e; border-radius: 6px; font: inherit; }
 .cart-total { margin-top: 1.5rem; font-size: 1.25rem; font-weight: bold; }
 .order-card { margin: 1rem 0; }
 button:disabled { opacity: 0.6; cursor: wait; }
@@ -421,6 +433,29 @@ input::placeholder {
   background: #fff;
   color: #26351f;
   font: inherit;
+}
+
+.season-options {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  border: 1px solid #75806e;
+  border-radius: 6px;
+}
+
+.season-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 400;
+}
+
+.season-options input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
 }
 
 .submit-button {
@@ -652,6 +687,18 @@ async function updateCart(seedId, quantity) {
   }
 }
 
+function setCartQuantity(seedId, event) {
+  const quantity = Number(event.target.value)
+
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+    shoppingError.value = 'Informe uma quantidade entre 1 e 999.'
+    event.target.value = cart.value.items.find((item) => item.seed_id === seedId)?.quantity ?? 1
+    return
+  }
+
+  updateCart(seedId, quantity)
+}
+
 async function loadOrders(page = 1) {
   if (ordersLoading.value) return
   ordersLoading.value = true
@@ -771,6 +818,17 @@ function translateSeason(name) {
   return seasonTranslations[key] ?? name
 }
 
+function formatSeedSeasons(seasons) {
+  const seasonKeys = new Set(seasons.map((season) => getSeasonKey(season.name)))
+  const allSeasonKeys = Object.keys(seasonTranslations)
+
+  if (allSeasonKeys.every((season) => seasonKeys.has(season))) {
+    return 'Todas as estações'
+  }
+
+  return seasons.map((season) => translateSeason(season.name)).join(', ') || '—'
+}
+
 function getSeasonKey(name) {
   const normalizedName = name
     .trim()
@@ -882,6 +940,11 @@ async function saveCatalogSeed() {
     return
   }
 
+  if (!catalogForm.value.seasons.length) {
+    catalogError.value = 'Selecione pelo menos uma estação.'
+    return
+  }
+
   catalogSaving.value = true
   catalogError.value = ''
 
@@ -899,7 +962,8 @@ async function saveCatalogSeed() {
       body: payload,
     })
 
-    shoppingNotice.value = `Item catalogado com sucesso: ${translateSeed(created.name)}`
+    const createdSeed = created.data ?? created
+    shoppingNotice.value = `Item catalogado com sucesso: ${translateSeed(createdSeed.name)}`
     view.value = 'catalog'
     await loadSeeds()
     catalogForm.value = {

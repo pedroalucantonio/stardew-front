@@ -1,46 +1,47 @@
-# teste
+# Armazém do Pierre
 
-PIERRE-ADMIN-2026
+Loja de sementes inspirada em Stardew Valley. O frontend usa Vue 3 e Vite; a
+API Laravel fica na pasta `../stardew-api`.
 
-This template should help get you started developing with Vue 3 in Vite.
+## Requisitos
 
-## Recommended IDE Setup
+- Node.js `22.18.0` ou superior
+- API Laravel em execução em `http://localhost:8000`
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Desenvolvimento local
 
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+Na pasta da API, configure o arquivo `.env`, instale as dependências PHP e
+inicie o servidor:
 
 ```sh
-npm install
+cd ../stardew-api
+composer install
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-### Compile and Hot-Reload for Development
+Em outro terminal, na pasta do frontend:
 
 ```sh
+npm ci
 npm run dev
 ```
 
-### Compile and Minify for Production
+Abra a URL indicada pelo Vite, normalmente `http://localhost:5173`. A variável
+`VITE_API_BASE_URL` em `.env` deve apontar para `http://localhost:8000`.
+
+## Verificações
 
 ```sh
 npm run build
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
 npm run lint
 ```
+
+## Publicação
+
+Defina `VITE_API_BASE_URL=/` se o frontend e a API forem servidos pelo mesmo
+domínio, com um proxy que encaminhe `/api/*` e `/sanctum/*` para o Laravel.
+Se os serviços tiverem domínios diferentes, use a URL HTTPS pública da API e
+configure CORS, Sanctum e cookies no ambiente da API.
+
+Nunca inclua senhas, tokens, `APP_KEY` ou o código de administrador no frontend
+ou em arquivos versionados.

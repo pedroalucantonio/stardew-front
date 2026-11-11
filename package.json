@@ -1,6 +1,6 @@
 {
-  "name": "teste",
-  "version": "0.0.0",
+  "name": "armazem-do-pierre",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "run-s \"lint:*\"",
-    "lint:oxlint": "oxlint . --fix",
-    "lint:eslint": "eslint . --fix --cache",
+    "lint:oxlint": "oxlint .",
+    "lint:eslint": "eslint . --cache",
     "format": "oxfmt src/"
   },
   "dependencies": {
