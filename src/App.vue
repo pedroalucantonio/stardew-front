@@ -20,7 +20,11 @@
       <nav class="login" aria-label="Autenticação">
         <template v-if="authUser">
           <span class="welcome">Olá, {{ authUser.name }}</span>
-          <button class="nav-button" type="button" @click="logout">Sair</button>
+          <button class="nav-button" type="button" @click="view = 'catalog'">Loja</button>
+          <button v-if="authUser.is_admin" class="nav-button" type="button" @click="view = 'admin-catalog'">Catalogar itens</button>
+          <button class="nav-button" type="button" @click="openCart">Carrinho ({{ cartCount }})</button>
+          <button class="nav-button" type="button" @click="openProfile">Meu perfil</button>
+          <button class="nav-button" type="button" :disabled="shoppingBusy || shoppingLoading || ordersLoading" @click="logout">Sair</button>
         </template>
         <template v-else-if="authMode !== 'checking'">
           <a href="#login" @click.prevent="setAuthMode('login')">Entrar</a>
@@ -87,6 +91,16 @@
               required
               minlength="8"
             >
+
+            <label for="admin-code">Código de ADMIN</label>
+            <input
+              id="admin-code"
+              v-model="credentials.admin_code"
+              name="admin_code"
+              type="text"
+              placeholder="Deixe em branco para conta comum"
+              maxlength="255"
+            >
           </template>
 
           <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
@@ -110,6 +124,89 @@
     </main>
 
     <main v-else class="main">
+      <p v-if="shoppingError" class="error" role="alert">{{ shoppingError }}</p>
+      <p v-if="shoppingNotice" role="status">{{ shoppingNotice }}</p>
+      <section v-if="view === 'cart'" aria-labelledby="cart-title" :aria-busy="shoppingBusy">
+        <h1 id="cart-title">Meu carrinho</h1>
+        <p v-if="shoppingLoading">Carregando carrinho...</p>
+        <button v-else-if="!cartLoaded" class="nav-button" @click="loadCart">Tentar carregar carrinho novamente</button>
+        <template v-else>
+          <p v-if="!cart.items.length">Seu carrinho está vazio. Escolha sementes na loja!</p>
+          <article v-for="item in cart.items" :key="item.seed_id" class="shopping-row">
+            <div><strong>{{ translateSeed(item.name) }}</strong><p>{{ item.price }} ouros por unidade</p></div>
+            <div class="quantity-controls">
+              <button class="nav-button" :disabled="shoppingBusy" :aria-label="'Diminuir quantidade de ' + translateSeed(item.name)" @click="updateCart(item.seed_id, item.quantity - 1)">−</button>
+              <span>{{ item.quantity }}</span>
+              <button class="nav-button" :disabled="shoppingBusy || item.quantity >= 999" :aria-label="'Aumentar quantidade de ' + translateSeed(item.name)" @click="updateCart(item.seed_id, item.quantity + 1)">+</button>
+              <button class="nav-button" :disabled="shoppingBusy" :aria-label="'Remover ' + translateSeed(item.name)" @click="updateCart(item.seed_id, 0)">Remover</button>
+            </div>
+            <strong>{{ item.subtotal }} ouros</strong>
+          </article>
+          <p class="cart-total" aria-live="polite">Total da compra: {{ cart.total }} ouros</p>
+          <button class="submit-button" :disabled="shoppingBusy || !cart.items.length" @click="checkout">{{ shoppingBusy ? 'Aguarde...' : 'Finalizar pedido' }}</button>
+        </template>
+      </section>
+      <section v-else-if="view === 'profile'" aria-labelledby="profile-title">
+        <h1 id="profile-title">Meu perfil</h1>
+        <p><strong>{{ authUser.name }}</strong> · {{ authUser.email }}</p>
+        <h2>Histórico de pedidos</h2>
+        <p v-if="ordersLoading" role="status">Carregando pedidos...</p>
+        <template v-else>
+          <p v-if="!orders.length">Você ainda não fez nenhum pedido.</p>
+          <article v-for="order in orders" :key="order.id" class="seed-card order-card">
+            <h3>Pedido #{{ order.id }}</h3>
+            <p>{{ formatOrderDate(order.created_at) }} · Pedido registrado</p>
+            <ul><li v-for="item in order.items" :key="item.seed_id">{{ item.quantity }} × {{ translateSeed(item.name) }} — {{ item.price }} ouros/un. · {{ item.subtotal }} ouros</li></ul>
+            <strong>Total: {{ order.total }} ouros</strong>
+          </article>
+          <div class="quantity-controls" v-if="ordersLastPage > 1">
+            <button class="nav-button" :disabled="ordersPage <= 1" @click="loadOrders(ordersPage - 1)">Anterior</button>
+            <span>Página {{ ordersPage }} de {{ ordersLastPage }}</span>
+            <button class="nav-button" :disabled="ordersPage >= ordersLastPage" @click="loadOrders(ordersPage + 1)">Próxima</button>
+          </div>
+        </template>
+      </section>
+
+      <section v-else-if="view === 'admin-catalog'" aria-labelledby="admin-catalog-title">
+        <h1 id="admin-catalog-title">Catalogar item</h1>
+        <form class="auth-form" @submit.prevent="saveCatalogSeed">
+          <label for="catalog-name">Nome do item</label>
+          <input id="catalog-name" v-model.trim="catalogForm.name" type="text" required>
+
+          <label for="catalog-type">Tipo</label>
+          <select id="catalog-type" v-model="catalogForm.type" required>
+            <option value="semente">Semente</option>
+            <option value="produto">Produto</option>
+          </select>
+
+          <label for="catalog-price">Preço</label>
+          <input id="catalog-price" v-model.number="catalogForm.price" type="number" min="0" required>
+
+          <label for="catalog-days">Dias para crescer</label>
+          <input id="catalog-days" v-model.number="catalogForm['days-to-grow']" type="number" min="1" max="30" required>
+
+          <label for="catalog-regrowable">Rebrota?</label>
+          <input id="catalog-regrowable" v-model="catalogForm.regrowable" type="checkbox">
+
+          <label v-if="catalogForm.regrowable" for="catalog-regrow-days">Dias entre rebrotas</label>
+          <input v-if="catalogForm.regrowable" id="catalog-regrow-days" v-model.number="catalogForm['regrow-days']" type="number" min="1" max="30" required>
+
+          <label for="catalog-seasons">Estações</label>
+          <select id="catalog-seasons" v-model="catalogForm.seasons" multiple size="4" required>
+            <option value="1">Primavera</option>
+            <option value="2">Verão</option>
+            <option value="3">Outono</option>
+            <option value="4">Inverno</option>
+          </select>
+
+          <p v-if="catalogError" class="auth-error" role="alert">{{ catalogError }}</p>
+          <button class="submit-button" type="submit" :disabled="catalogSaving">
+            {{ catalogSaving ? 'Salvando...' : 'Catalogar item' }}
+          </button>
+        </form>
+      </section>
+
+      <template v-else>
       <h1>Produtos Disponíveis</h1>
       <label class="season-switch">
         <input
@@ -165,13 +262,29 @@
               <dd>{{ seed.seasons.map((season) => translateSeason(season.name)).join(', ') || '—' }}</dd>
             </div>
           </dl>
+          <button class="submit-button" :disabled="shoppingBusy || shoppingLoading || !cartLoaded || cartQuantity(seed.id) >= 999" @click="updateCart(seed.id, cartQuantity(seed.id) + 1)">Adicionar ao carrinho</button>
         </article>
       </section>
+      </template>
     </main>
   </div>
 </template>
 
 <style scoped>
+.shopping-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid #75934a;
+}
+.quantity-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+.cart-total { margin-top: 1.5rem; font-size: 1.25rem; font-weight: bold; }
+.order-card { margin: 1rem 0; }
+button:disabled { opacity: 0.6; cursor: wait; }
+.login { flex-wrap: wrap; }
 .page {
   display: flow-root;
   min-height: 100vh;
@@ -483,6 +596,103 @@ import winterWallpaper from './components/winter.png'
 import springWallpaper from './components/spring.png'
 import summerWallpaper from './components/summer.png'
 
+const view = ref('catalog')
+const cart = ref({ items: [], total: 0 })
+const shoppingLoading = ref(true)
+const cartLoaded = ref(false)
+const shoppingBusy = ref(false)
+const shoppingError = ref('')
+const shoppingNotice = ref('')
+const orders = ref([])
+const ordersLoading = ref(false)
+const ordersPage = ref(1)
+const ordersLastPage = ref(1)
+const cartCount = computed(() => cart.value.items.reduce((sum, item) => sum + item.quantity, 0))
+const cartQuantity = (id) => cart.value.items.find((item) => item.seed_id === id)?.quantity ?? 0
+const formatOrderDate = (date) => new Date(date.includes('T') ? date : date.replace(' ', 'T') + 'Z').toLocaleString('pt-BR')
+
+function shoppingFailure(cause) {
+  shoppingError.value = cause.data?.errors
+    ? Object.values(cause.data.errors).flat().join(' ')
+    : cause.data?.message ?? 'Não foi possível concluir a operação. Tente novamente.'
+}
+
+function openCart() {
+  view.value = 'cart'
+  shoppingNotice.value = ''
+  if (!shoppingBusy.value && !shoppingLoading.value) loadCart()
+}
+
+async function loadCart() {
+  shoppingLoading.value = true
+  cartLoaded.value = false
+  shoppingError.value = ''
+  try {
+    cart.value = await api('/api/cart')
+    cartLoaded.value = true
+  } catch (cause) {
+    shoppingFailure(cause)
+  } finally {
+    shoppingLoading.value = false
+  }
+}
+
+async function updateCart(seedId, quantity) {
+  if (shoppingBusy.value || shoppingLoading.value || !cartLoaded.value) return
+  shoppingBusy.value = true
+  shoppingError.value = ''
+  shoppingNotice.value = ''
+  try {
+    cart.value = await api('/api/cart', { method: 'PUT', body: { seed_id: seedId, quantity } })
+    shoppingNotice.value = 'Carrinho salvo.'
+  } catch (cause) {
+    shoppingFailure(cause)
+  } finally {
+    shoppingBusy.value = false
+  }
+}
+
+async function loadOrders(page = 1) {
+  if (ordersLoading.value) return
+  ordersLoading.value = true
+  shoppingError.value = ''
+  try {
+    const result = await api(`/api/orders?page=${page}`)
+    orders.value = result.data
+    ordersPage.value = result.current_page
+    ordersLastPage.value = result.last_page
+  } catch (cause) {
+    shoppingFailure(cause)
+  } finally {
+    ordersLoading.value = false
+  }
+}
+
+function openProfile() {
+  view.value = 'profile'
+  shoppingNotice.value = ''
+  loadOrders()
+}
+
+async function checkout() {
+  if (shoppingBusy.value || shoppingLoading.value || !cartLoaded.value || !cart.value.items.length) return
+  shoppingBusy.value = true
+  shoppingError.value = ''
+  shoppingNotice.value = ''
+  try {
+    const order = await api('/api/orders', { method: 'POST' })
+    cart.value = { items: [], total: 0 }
+    view.value = 'profile'
+    shoppingNotice.value = `Pedido #${order.id} registrado com sucesso!`
+    await loadOrders()
+  } catch (cause) {
+    await loadCart()
+    shoppingFailure(cause)
+  } finally {
+    shoppingBusy.value = false
+  }
+}
+
 const seeds = ref([])
 const authMode = ref('checking')
 const authUser = ref(null)
@@ -493,7 +703,19 @@ const credentials = ref({
   email: '',
   password: '',
   password_confirmation: '',
+  admin_code: '',
 })
+const catalogForm = ref({
+  name: '',
+  type: 'semente',
+  price: 0,
+  'days-to-grow': 1,
+  regrowable: false,
+  'regrow-days': 1,
+  seasons: ['1'],
+})
+const catalogError = ref('')
+const catalogSaving = ref(false)
 const search = ref('')
 const showAllSeasons = ref(false)
 const loading = ref(true)
@@ -602,6 +824,7 @@ function setAuthMode(mode) {
     email: '',
     password: '',
     password_confirmation: '',
+    admin_code: '',
   }
 }
 
@@ -626,7 +849,7 @@ async function submitAuth() {
 
     authUser.value = user.data ?? user
     authMode.value = ''
-    await loadSeeds()
+    await Promise.all([loadSeeds(), loadCart()])
   } catch (cause) {
     authError.value = getAuthError(cause)
   } finally {
@@ -638,12 +861,60 @@ async function logout() {
   try {
     await api('/api/logout', { method: 'POST' })
     authUser.value = null
+    cart.value = { items: [], total: 0 }
+    cartLoaded.value = false
+    orders.value = []
+    view.value = 'catalog'
+    shoppingError.value = ''
+    shoppingNotice.value = ''
     seeds.value = []
     apiError.value = ''
     setAuthMode('login')
   } catch (cause) {
     console.error('Erro ao encerrar sessão:', cause)
     apiError.value = 'Não foi possível encerrar a sessão. Tente novamente.'
+  }
+}
+
+async function saveCatalogSeed() {
+  if (!authUser.value?.is_admin) {
+    catalogError.value = 'Você não tem permissão para catalogar itens.'
+    return
+  }
+
+  catalogSaving.value = true
+  catalogError.value = ''
+
+  try {
+    const payload = {
+      ...catalogForm.value,
+      seasons: catalogForm.value.seasons.map((value) => Number(value)),
+      price: Number(catalogForm.value.price),
+      'days-to-grow': Number(catalogForm.value['days-to-grow']),
+      'regrow-days': catalogForm.value.regrowable ? Number(catalogForm.value['regrow-days']) : null,
+    }
+
+    const created = await api('/api/seeds', {
+      method: 'POST',
+      body: payload,
+    })
+
+    shoppingNotice.value = `Item catalogado com sucesso: ${translateSeed(created.name)}`
+    view.value = 'catalog'
+    await loadSeeds()
+    catalogForm.value = {
+      name: '',
+      type: 'semente',
+      price: 0,
+      'days-to-grow': 1,
+      regrowable: false,
+      'regrow-days': 1,
+      seasons: ['1'],
+    }
+  } catch (cause) {
+    catalogError.value = cause.data?.message ?? 'Não foi possível catalogar o item.'
+  } finally {
+    catalogSaving.value = false
   }
 }
 
@@ -673,7 +944,7 @@ onMounted(() => {
     .then((user) => {
       authUser.value = user.data ?? user
       authMode.value = ''
-      return loadSeeds()
+      return Promise.all([loadSeeds(), loadCart()])
     })
     .catch((cause) => {
       authMode.value = 'login'
